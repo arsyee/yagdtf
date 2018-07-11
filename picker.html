@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons.css">
+  <script>
+    var DEVELOPER_KEY = 'FILL YOUR DEVELOPER KEY HERE';
+    var DIALOG_DIMENSIONS = {width: 600, height: 425};
+    var pickerApiLoaded = false;
+
+    var pickerConfiguration = null;
+    
+    function setPickerConfiguration(a) {
+        console.log("pickerConfiguration: %s", JSON.stringify(a))
+        pickerConfiguration = a;
+        onVariableLoaded();
+    }
+
+    function onApiLoad() {
+      gapi.load('picker', {'callback': function() {
+        pickerApiLoaded = true;
+        onVariableLoaded();
+      }});
+      google.script.run.withSuccessHandler(setPickerConfiguration)
+          .withFailureHandler(showError).getPickerConfiguration();
+     }
+
+    function onVariableLoaded() {
+        console.log("onVariableLoaded: %s", JSON.stringify(pickerConfiguration))
+        if (pickerApiLoaded && pickerConfiguration) {
+            createPicker()
+        }
+    }
+
+    function createPicker() {
+      console.log("createPicker")
+      if (pickerApiLoaded && pickerConfiguration) {
+        console.log("building picker: %s", pickerConfiguration.lastPicker)
+        var view;
+        if (pickerConfiguration.lastPicker == "templateDir" || pickerConfiguration.lastPicker == "outputDir") {
+          var view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+              .setSelectFolderEnabled(true)
+        } else {
+          var view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
+            .setParent(pickerConfiguration.startDir)
+        }
+        view.setIncludeFolders(true)
+        var picker = new google.picker.PickerBuilder()
+            .addView(view)
+            .enableFeature(google.picker.Feature.NAV_HIDDEN)
+            .hideTitleBar()
+            .setOAuthToken(pickerConfiguration.oAuthToken)
+            .setDeveloperKey(DEVELOPER_KEY)
+            .setCallback(pickerCallback)
+            .setOrigin(google.script.host.origin)
+            // Instruct Picker to fill the dialog, minus 2 pixels for the border.
+            .setSize(DIALOG_DIMENSIONS.width - 2,
+                DIALOG_DIMENSIONS.height - 2)
+            .build();
+        picker.setVisible(true);
+        console.log("picker should be visible")
+      } else {
+        showError('Unable to load the file picker.');
+      }
+    }
+
+    function pickerCallback(data) {
+      var action = data[google.picker.Response.ACTION];
+      console.log("pickerCallback called with %s", action)
+      if (action == google.picker.Action.PICKED) {
+        var doc = data[google.picker.Response.DOCUMENTS][0];
+        var id = doc[google.picker.Document.ID];
+        var url = doc[google.picker.Document.URL];
+        var title = doc[google.picker.Document.NAME];
+        document.getElementById('result').innerHTML =
+            '<b>You chose:</b><br>Name: <a href="' + url + '">' + title +
+            '</a><br>ID: ' + id;
+        selectItem(title, id);
+        google.script.host.close();
+      } else if (action == google.picker.Action.CANCEL) {
+        document.getElementById('result').innerHTML = 'Picker canceled.';
+        google.script.host.close();
+      }
+    }
+
+    function selectItem(title, id) {
+        showMessage("Processing: " + title)
+        google.script.run.withSuccessHandler(showMessage)
+            .withFailureHandler(showError).selectItem(id)
+    }
+
+    function showError(message) {
+      document.getElementById('result').innerHTML = 'Error: ' + message;
+    }
+    
+    function showMessage(message) {
+      document.getElementById('result').innerHTML = 'Message: ' + message;
+    }
+  </script>
+</head>
+<body>
+  <div>
+    <p id='result'></p>
+  </div>
+  <script src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
+</body>
+</html>
