@@ -9,6 +9,193 @@
       min-width: 10px;
     }
     </style>
+    <script>
+    var DEVELOPER_KEY = 'FILL YOUR DEVELOPER KEY HERE';
+    // var DIALOG_DIMENSIONS = {width: 600, height: 425};
+    var DIALOG_DIMENSIONS = {width: 200, height: 425};
+
+    var preferences;
+    
+    // functions to communicate with the server
+    
+    function onApiLoad() {
+        console.log("Loading API...")
+        gapi.load('picker', {'callback': function() {
+            console.log("Loading preferences...")
+            google.script.run
+                .withSuccessHandler(loadPreferences)
+                .withFailureHandler(function(message) {
+                    console.log("Preferences could not be loaded: %s", JSON.stringify(message))
+                    showMessage("Az eszköz nem működik.")
+                })
+                .getPreferences();
+        }});
+    }
+
+    function savePreferences() {
+        console.log("savePreferences: %s", JSON.stringify(preferences))
+        google.script.run.withSuccessHandler(showMessage)
+              .withFailureHandler(showMessage).savePreferences(preferences);
+    }
+
+    function fillTemplate(id) {
+        console.log("fillTemplate: %s", id)
+        showMessage("Töltöm a kiválasztott dokumentumot...")
+        google.script.run.withSuccessHandler(showMessage)
+              .withFailureHandler(showMessage).fillTemplate(id);
+    }
+
+    // set up user interface
+
+    function loadPreferences(retrievedPreferences) {
+        console.log("Sidebar preferences: %s", JSON.stringify(retrievedPreferences))
+        showMessage("Beállítások töltése...")
+        preferences = retrievedPreferences;
+
+        document.getElementById('hint').innerHTML = getHintText();
+        if (preferences.templateDir) {
+            document.getElementById('template_dir').innerHTML = preferences.templateDirName;
+        }
+        if (preferences.outputDir) {
+            document.getElementById('output_dir').innerHTML = preferences.outputDirName;
+        }
+        var templates = document.getElementById('templates')
+        while (templates.firstChild) templates.removeChild(templates.firstChild)
+        for (var i = 0; i < preferences.templates.length; i++) {
+            if (preferences.templates[i]) {
+                var tr = document.createElement("tr"); templates.append(tr)
+                  var td_name = document.createElement("td"); tr.appendChild(td_name)
+                    td_name.innerHTML = preferences.templates[i].name
+                  var td_fill_button = document.createElement("td"); tr.appendChild(td_fill_button)
+                    var fill_button = document.createElement("button"); td_fill_button.appendChild(fill_button)
+                      fill_button.innerHTML = "kitölt"
+                      fill_button.class = "blue"
+                      fill_button.setAttribute('onclick', "fillTemplate('"+preferences.templates[i].id+"')")
+                  var td_remove_button = document.createElement("td"); tr.appendChild(td_remove_button)
+                    var remove_button = document.createElement("button"); td_remove_button.appendChild(remove_button)
+                      remove_button.innerHTML = "töröl"
+                      remove_button.class = 'mybutton'
+                      remove_button.setAttribute('onclick', "removeTemplate('"+preferences.templates[i].id+"')")
+                console.log("Template: %s %s %s", i, preferences.templates[i].id, preferences.templates[i].name)
+            }
+        }
+        showMessage("Működésre kész!")
+    }
+
+    // utilities to inform user
+
+    function getHintText() {
+        var hintText = "Adj sablonokat ehhez a táblázathoz!";
+        if (preferences.templates) {
+          var hintText = "Válassz ki egy sort és nyomd meg a sablonhoz tartozó gombot a kitöltéshez.<br>A kitöltött sablon ";
+          if (preferences.outputDir) {
+            hintText = hintText + "a lent megadott 'Mentés ide' könyvtárba fog kerülni."
+          } else {
+            hintText = hintText + "ugyanabba a könyvtárba fog kerülni, ahol ez a táblázat van.";
+          }
+        }
+        return hintText;
+    }
+
+    function showMessage(msg) {
+        console.log("showMessage: %s", JSON.stringify(msg))
+        if (typeof msg == "string") {
+            document.getElementById('message').innerHTML = msg;
+        } else if (typeof msg == "object" && "message" in msg) {
+            document.getElementById('message').innerHTML = msg.message;
+        } else {
+            document.getElementById('message').innerHTML = JSON.stringify(msg);
+        }
+    }
+      
+    // functions to handle the picker
+      
+    function createPicker(type) {
+        console.log("createPicker(%s): %s", type, preferences)
+        if (preferences) {
+            var view;
+            if (type == "templateDir" || type == "outputDir") {
+                showMessage("Válassz egy könyvtárat!")
+                var view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+                    .setSelectFolderEnabled(true)
+            } else {
+                showMessage("Válassz egy sablon dokumentumot!")
+                var view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
+                if (preferences.templateDir) {
+                    view.setParent(preferences.templateDir)
+                }
+            }
+            view.setIncludeFolders(true)
+            var picker = new google.picker.PickerBuilder()
+                .addView(view)
+                .enableFeature(google.picker.Feature.NAV_HIDDEN)
+                .hideTitleBar()
+                .setOAuthToken(preferences.oAuthToken)
+                .setDeveloperKey(DEVELOPER_KEY)
+                .setCallback(function(data) { pickerCallback(data, type) })
+                .setOrigin(google.script.host.origin)
+                .setSize(DIALOG_DIMENSIONS.width - 2, DIALOG_DIMENSIONS.height - 2)
+                .build();
+            picker.setVisible(true);
+        } else {
+            showMessage('Unable to load the file picker.');
+        }
+    }
+    
+    function pickerCallback(data, type) {
+        var action = data[google.picker.Response.ACTION];
+        console.log("pickerCallback(%s) called with %s", type, action)
+        if (action == google.picker.Action.PICKED) {
+            var doc = data[google.picker.Response.DOCUMENTS][0];
+            var id = doc[google.picker.Document.ID];
+            var url = doc[google.picker.Document.URL];
+            var title = doc[google.picker.Document.NAME];
+            showMessage('Ezt választottad: <a href="' + url + '">' + title + '</a>')
+            console.log('Selected id: %s', id)
+            selectItem(type, id, title);
+        } else if (action == google.picker.Action.CANCEL) {
+            showMessage("Választás megszakítva.")
+        }
+    }
+
+    function removeTemplate(id) {
+        var changed = false
+        for (var i = 0; i < preferences.maxTemplates; ++i) {
+            if (preferences.templates[i] && preferences.templates[i].id == id) {
+                preferences.templates[i] = null
+                changed = true
+                showMessage("Sablon eltávolítva.")
+            }
+        }
+        if (changed) savePreferences()
+    }
+
+    function selectItem(type, id, name) {
+        switch (type) {
+        case 'templateDir':
+            preferences.templateDir = id
+            preferences.templateDirName = name
+            break;
+        case 'outputDir':
+            preferences.outputDir = id
+            preferences.outputDirName = name
+            break;
+        default:
+            for (var i = 0; i < preferences.maxTemplates; ++i) {
+                if (!preferences.templates[i]) {
+                    preferences.templates[i] = {
+                        id: id,
+                        name: name
+                    }
+                    break;
+                }
+            }
+        }
+        savePreferences()
+        loadPreferences(preferences)
+    }
+
+    </script>
   </head>
   <body>
   <div class="sidebar">
@@ -16,138 +203,21 @@
     <p id='hint'></p>
     <table id='templates'>
     </table>
-    <button onClick="selectTemplate()">Sablon hozzáadása</button>
+    <button onClick='createPicker("template")'>Sablon hozzáadása</button>
     <h3>Beállítások</h3>
     <table>
       <tr>
         <td>Sablonok</td>
-        <td><button id='template_dir' onClick='selectTemplateDir()'>választ</button></td>
+        <td><button id='template_dir' onClick='createPicker("templateDir")'>választ</button></td>
       </tr>
       <tr>
         <td>Mentés ide</td>
-        <td><button id='output_dir' onClick='selectOutputDir()'>választ</button></td>
+        <td><button id='output_dir' onClick='createPicker("outputDir")'>választ</button></td>
       </tr>
     </table>
     <h3>Üzenetek</h3>
-    <p id='message'>Most nincs semmi üzenet.</p>
+    <p id='message'>Az eszköz töltődik, kérlek várj...</p>
   </div>
-
-    <script>
-      var prefs;
-      var timerLength = 10000;
-      var timerRef = null;
-      function setTimer(length) {
-          if (length) {
-            timerLength = length
-          }
-          clearTimeout(timerRef)
-          timerRef = setTimeout(reload, timerLength * 100); // calling API too frequently, need another solution
-      }
-      reload();
-
-      function reload() {
-        google.script.run.withSuccessHandler(loadPreferences)
-            .withFailureHandler(onLoadFailed).getPreferences();
-      }
-
-      function selectTemplate() {
-        console.log("selectTemplate")
-        setTimer(1000)
-        google.script.run.withSuccessHandler(showMessage)
-              .withFailureHandler(showMessage).selectTemplate();
-      }
-
-      function removeTemplate(id) {
-        console.log("removeTemplate: %s", id)
-        setTimer(1000)
-        google.script.run.withSuccessHandler(showMessage)
-              .withFailureHandler(showMessage).removeTemplate(id);
-      }
-
-      function fillTemplate(id) {
-        console.log("fillTemplate: %s", id)
-        showMessage("Töltöm a kiválasztott dokumentumot...")
-        google.script.run.withSuccessHandler(showMessage)
-              .withFailureHandler(showMessage).fillTemplate(id);
-      }
-
-      function selectTemplateDir() {
-        console.log("selectTemplateDir")
-        setTimer(1000)
-        google.script.run.withSuccessHandler(showMessage)
-              .withFailureHandler(showMessage).selectTemplateDir();
-      }
-
-      function selectOutputDir() {
-        console.log("selectOutputDir")
-        setTimer(1000)
-        google.script.run.withSuccessHandler(showMessage)
-              .withFailureHandler(showMessage).selectOutputDir();
-      }
-
-      function onLoadFailed(message) {
-        console.log("preferences could not be loaded: %s", JSON.stringify(message))
-        showMessage(message)
-        setTimer()
-      }
-
-      function loadPreferences(retrievedPrefs) {
-        console.log("sidebar preferences: %s", JSON.stringify(retrievedPrefs))
-        if (JSON.stringify(prefs) !== JSON.stringify(retrievedPrefs)) {
-          prefs = retrievedPrefs;
-          onPreferencesChanged();
-        }
-        setTimer()
-      }
-      
-      function onPreferencesChanged() {
-        timerLength = 10000;
-        document.getElementById('hint').innerHTML = getHintText();
-        if (prefs.templateDir) {
-          document.getElementById('template_dir').innerHTML = prefs.templateDirName;
-        }
-        if (prefs.outputDir) {
-          document.getElementById('output_dir').innerHTML = prefs.outputDirName;
-        }
-        var templates = document.getElementById('templates')
-        while (templates.firstChild) templates.removeChild(templates.firstChild)
-        for (var i = 0; i < prefs.templates.length; i++) {
-          if (prefs.templates[i]) {
-            var tr = document.createElement("tr"); templates.append(tr)
-              var td_name = document.createElement("td"); tr.appendChild(td_name)
-                td_name.innerHTML = prefs.templates[i].name
-               var td_fill_button = document.createElement("td"); tr.appendChild(td_fill_button)
-                 var fill_button = document.createElement("button"); td_fill_button.appendChild(fill_button)
-                   fill_button.innerHTML = "kitölt"
-                   fill_button.class = "blue"
-                   fill_button.setAttribute('onclick', "fillTemplate('"+prefs.templates[i].id+"')")
-               var td_remove_button = document.createElement("td"); tr.appendChild(td_remove_button)
-                 var remove_button = document.createElement("button"); td_remove_button.appendChild(remove_button)
-                   remove_button.innerHTML = "töröl"
-                   remove_button.class = 'mybutton'
-                   remove_button.setAttribute('onclick', "removeTemplate('"+prefs.templates[i].id+"')")
-            console.log("Template: %s %s %s", i, prefs.templates[i].id, prefs.templates[i].name)
-          }
-        }
-      }
-
-      function getHintText() {
-        var hintText = "Adj sablonokat ehhez a táblázathoz!";
-        if (prefs.templates) {
-          var hintText = "Válassz ki egy sort és nyomd meg a sablonhoz tartozó gombot a kitöltéshez.<br>A kitöltött sablon ";
-          if (prefs.outputDir) {
-            hintText = hintText + "a lent megadott 'Mentés ide' könyvtárba fog kerülni."
-          } else {
-            hintText = hintText + "ugyanabba a könyvtárba fog kerülni, ahol ez a táblázat van.";
-          }
-        }
-        return hintText;
-      }
-
-      function showMessage(msg) {
-        console.log(JSON.stringify(msg))
-        document.getElementById('message').innerHTML = JSON.stringify(msg);
-      }
-    </script>
+    <script src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
   </body>
 </html>

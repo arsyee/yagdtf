@@ -18,72 +18,34 @@ function onInstall(e) {
 
 function showSidebar() {
   var ui = HtmlService.createHtmlOutputFromFile('sidebar')
-      .setTitle('Sablon kitöltés');
+      .setTitle('Sablon kitöltés')
   SpreadsheetApp.getUi().showSidebar(ui);
-}
-
-function showPicker() {
-  var html = HtmlService.createHtmlOutputFromFile('picker.html')
-      .setWidth(600)
-      .setHeight(425)
-      .setSandboxMode(HtmlService.SandboxMode.IFRAME);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Select a document');
 }
 
 // ******************************* //
 // functions called by client side //
 // ******************************* //
 
-// picker interface
-
-function getPickerConfiguration() {
-  var pickerConfiguration = {
-    oAuthToken: getOAuthToken(),
-    lastPicker: PropertiesService.getUserProperties().getProperty("lastPicker"),
-    startDir: DriveApp.getRootFolder().getId(),
-  }
-  if (pickerConfiguration.lastPicker == "template") {
-    pickerConfiguration.startDir = PropertiesService.getUserProperties().getProperty("templateDir");
-  }
-  return pickerConfiguration;
-}
-
-function selectItem(id) { // callback for showPicker
-  switch (PropertiesService.getUserProperties().getProperty("lastPicker")) {
-      case 'templateDir':
-          PropertiesService.getUserProperties().setProperty("templateDir", id)
-          break;
-      case 'outputDir':
-          PropertiesService.getUserProperties().setProperty("outputDir", id)
-          break;
-      default:
-          addTemplate(id)
-          break;
-  }
-  return PropertiesService.getUserProperties().getProperty("lastPicker") + " set to " + id;
-}
-
-// sidebar interface
-
 var maxTemplates = 5;
 function getPreferences() {
-  var userProperties = PropertiesService.getUserProperties();
   var preferences = {
-    templateDir: userProperties.getProperty('templateDir'),
-    outputDir: userProperties.getProperty('outputDir'),
+    oAuthToken: getOAuthToken(),
+    templateDir: getUserProperty('templateDir'),
+    outputDir: getUserProperty('outputDir'),
+    maxTemplates:maxTemplates,
     templates: []
   };
   if (preferences.templateDir) {
-    preferences.templateDirName = DriveApp.getFolderById(userProperties.getProperty('templateDir')).getName();
+    preferences.templateDirName = DriveApp.getFolderById(getUserProperty('templateDir')).getName();
   }
   if (preferences.outputDir) {
-    preferences.outputDirName = DriveApp.getFolderById(userProperties.getProperty('outputDir')).getName();
+    preferences.outputDirName = DriveApp.getFolderById(getUserProperty('outputDir')).getName();
   }
   for (var i = 0; i < maxTemplates; ++i) {
-    if (userProperties.getProperty("template" + i)) {
+    if (getUserProperty("template" + i)) {
       preferences.templates[i] = {
-        id: userProperties.getProperty("template" + i),
-        name: DriveApp.getFileById(userProperties.getProperty("template" + i)).getName()
+        id: getUserProperty("template" + i),
+        name: DriveApp.getFileById(getUserProperty("template" + i)).getName()
       }
     } else {
       preferences.templates[i] = null;
@@ -92,35 +54,8 @@ function getPreferences() {
   return preferences;
 }
 
-function selectTemplateDir() {
-  PropertiesService.getUserProperties().setProperty("lastPicker", "templateDir")
-  showPicker()
-  return message("Válassz egy könyvtárat!")
-}
-
-function selectOutputDir() {
-  PropertiesService.getUserProperties().setProperty("lastPicker", "outputDir")
-  showPicker()
-  return message("Válassz egy könyvtárat!")
-}
-
-function selectTemplate() {
-  PropertiesService.getUserProperties().setProperty("lastPicker", "template")
-  showPicker()
-  return message("Válassz egy dokumentumot!")
-}
-
-function removeTemplate(id) {
-  var userProperties = PropertiesService.getUserProperties();
-  for (var i = 0; i < maxTemplates; ++i) {
-    if (userProperties.getProperty("template" + i)) {
-      if (userProperties.getProperty("template" + i) == id) {
-        userProperties.deleteProperty("template" + i)
-        debug("Template " + i + " was deleted.")
-      }
-    }
-  }
-  return message("Törlés végrehajtva.")
+function savePreferences(preferences) {
+  return message("savePreferences not implemented");
 }
 
 function fillTemplate(id) {
@@ -141,9 +76,9 @@ function fillTemplate(id) {
   
   var document = DocumentApp.openById(newId);
   for (var col = 1; col < columns; col = col + 1) {
-    document.getHeader().replaceText("<" + sheet.getRange(1, col).getValue() + ">", sheet.getRange(row, col).getValue())
-    document.getBody().replaceText("<" + sheet.getRange(1, col).getValue() + ">", sheet.getRange(row, col).getValue())
-    document.getFooter().replaceText("<" + sheet.getRange(1, col).getValue() + ">", sheet.getRange(row, col).getValue())
+    document.getHeader().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    document.getBody().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    document.getFooter().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
   }
   document.saveAndClose();
   
@@ -154,23 +89,13 @@ function fillTemplate(id) {
 // utility functions //
 // ***************** //
 
-function addTemplate(id) {
-  var userProperties = PropertiesService.getUserProperties();
-  for (var i = 0; i < maxTemplates; ++i) {
-    if (!userProperties.getProperty("template" + i)) {
-      userProperties.setProperty("template" + i, id)
-      return;
-    }
-  }
-}
-
 function getOAuthToken() {
   DriveApp.getRootFolder();
   return ScriptApp.getOAuthToken();
 }
 
 function getTemplateDir() {
-  var templateDir = PropertiesService.getUserProperties().getProperty("templateDir")
+  var templateDir = getUserProperty("templateDir")
   if (templateDir) {
     return templateDir;
   }
@@ -197,6 +122,23 @@ var tempLog = ""
 function debug(str) {
   if (tempLog.length > 0) tempLog = tempLog + "<br>"
   tempLog = tempLog + str
+}
+
+function getUserProperty(key) {
+  return null
+  try {
+    return PropertiesService.getUserProperties().getProperty(key)
+  } catch (err) {
+    return null
+  }
+}
+
+function setUserProperty(key, value) {
+  try {
+    PropertiesService.getUserProperties().setProperty(key, value)
+  } catch (err) {
+    return
+  }
 }
 
 function message(msg) {
