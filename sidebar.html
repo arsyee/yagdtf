@@ -41,7 +41,7 @@
             timerLength = length
           }
           clearTimeout(timerRef)
-          timerRef = setTimeout(reload, timerLength);
+          timerRef = setTimeout(reload, timerLength * 100); // calling API too frequently, need another solution
       }
       reload();
 
@@ -66,6 +66,7 @@
 
       function fillTemplate(id) {
         console.log("fillTemplate: %s", id)
+        showMessage("Töltöm a kiválasztott dokumentumot...")
         google.script.run.withSuccessHandler(showMessage)
               .withFailureHandler(showMessage).fillTemplate(id);
       }
@@ -85,6 +86,7 @@
       }
 
       function onLoadFailed(message) {
+        console.log("preferences could not be loaded: %s", JSON.stringify(message))
         showMessage(message)
         setTimer()
       }
@@ -143,7 +145,8 @@
       }
 
       function showMessage(msg) {
-        document.getElementById('message').innerHTML = msg;
+        console.log(JSON.stringify(msg))
+        document.getElementById('message').innerHTML = JSON.stringify(msg);
       }
     </script>
   </body>
