@@ -30,32 +30,67 @@ var maxTemplates = 5;
 function getPreferences() {
   var preferences = {
     oAuthToken: getOAuthToken(),
-    templateDir: getUserProperty('templateDir'),
-    outputDir: getUserProperty('outputDir'),
     maxTemplates:maxTemplates,
     templates: []
   };
-  if (preferences.templateDir) {
-    preferences.templateDirName = DriveApp.getFolderById(getUserProperty('templateDir')).getName();
-  }
-  if (preferences.outputDir) {
-    preferences.outputDirName = DriveApp.getFolderById(getUserProperty('outputDir')).getName();
-  }
-  for (var i = 0; i < maxTemplates; ++i) {
-    if (getUserProperty("template" + i)) {
-      preferences.templates[i] = {
-        id: getUserProperty("template" + i),
-        name: DriveApp.getFileById(getUserProperty("template" + i)).getName()
-      }
-    } else {
-      preferences.templates[i] = null;
+  
+  try {
+    var userProperties = PropertiesService.getUserProperties().getProperties()
+    for (var key in userProperties) {
+      debug(key + " : " + userProperties[key])
     }
+    if (userProperties.templateDir) {
+      preferences.templateDir = {
+        id: userProperties.templateDir,
+        name: DriveApp.getFolderById(userProperties.templateDir).getName()
+      }
+    }
+    if (userProperties.outputDir) {
+      preferences.outputDir = {
+        id: userProperties.outputDir,
+        name: DriveApp.getFolderById(userProperties.outputDir).getName()
+      }
+    }
+    for (var i = 0; i < maxTemplates; ++i) {
+      if (userProperties["template" + i]) {
+        preferences.templates[i] = {
+          id: userProperties["template" + i],
+          name: DriveApp.getFileById(userProperties["template" + i]).getName()
+        }
+      } else {
+        preferences.templates[i] = null;
+      }
+    }
+  } catch (err) {
+    debug("user properties cannot be read: " + str(err))
   }
+  preferences.message = tempLog
   return preferences;
 }
 
 function savePreferences(preferences) {
-  return message("savePreferences not implemented");
+  var userProperties = {}
+  if (preferences.templateDir) {
+    userProperties.templateDir = preferences.templateDir.id
+  }
+  if (preferences.outputDir) {
+    userProperties.outputDir = preferences.outputDir.id
+  }
+  var j = 0;
+  for (var i = 0; i < maxTemplates; ++i) {
+    if (preferences.templates[i]) {
+      userProperties["template" + j] = preferences.templates[i].id
+      ++j
+    }
+  }
+  debug(JSON.stringify(userProperties))
+  try {
+    PropertiesService.getUserProperties().deleteAllProperties()
+    PropertiesService.getUserProperties().setProperties(userProperties)
+    return message("Beállítások elmentve.")
+  } catch (err) {
+    return message("Hiba a mentés során.")
+  }
 }
 
 function fillTemplate(id) {
@@ -70,15 +105,21 @@ function fillTemplate(id) {
   
   var template = DocumentApp.openById(id);
   
-  var newFile = DriveApp.getFileById(id).makeCopy(DriveApp.getFolderById(getTemplateDir()));
+  var newFile = DriveApp.getFileById(id).makeCopy(DriveApp.getFolderById(getOutputDir()))
   newFile.setName(baseName(template.getName()) + " " + dataId);
   var newId = newFile.getId();
   
   var document = DocumentApp.openById(newId);
   for (var col = 1; col < columns; col = col + 1) {
-    document.getHeader().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
-    document.getBody().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
-    document.getFooter().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    if (document.getHeader()) {
+      document.getHeader().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    }
+    if (document.getBody()) {
+      document.getBody().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    }
+    if (document.getFooter()) {
+        document.getFooter().replaceText("<" + sheet.getRange(1, col).getDisplayValue() + ">", sheet.getRange(row, col).getDisplayValue())
+    }
   }
   document.saveAndClose();
   
@@ -94,10 +135,10 @@ function getOAuthToken() {
   return ScriptApp.getOAuthToken();
 }
 
-function getTemplateDir() {
-  var templateDir = getUserProperty("templateDir")
-  if (templateDir) {
-    return templateDir;
+function getOutputDir() {
+  var outputDir = PropertiesService.getUserProperties().getProperty("outputDir")
+  if (outputDir) {
+    return outputDir;
   }
   
   var currentId = SpreadsheetApp.getActive().getId();
@@ -122,23 +163,6 @@ var tempLog = ""
 function debug(str) {
   if (tempLog.length > 0) tempLog = tempLog + "<br>"
   tempLog = tempLog + str
-}
-
-function getUserProperty(key) {
-  return null
-  try {
-    return PropertiesService.getUserProperties().getProperty(key)
-  } catch (err) {
-    return null
-  }
-}
-
-function setUserProperty(key, value) {
-  try {
-    PropertiesService.getUserProperties().setProperty(key, value)
-  } catch (err) {
-    return
-  }
 }
 
 function message(msg) {

@@ -10,7 +10,7 @@
     }
     </style>
     <script>
-    var DEVELOPER_KEY = 'FILL YOUR DEVELOPER KEY HERE';
+    var DEVELOPER_KEY = 'INSERT YOUR DEVELOPER KEY HERE';
     // var DIALOG_DIMENSIONS = {width: 600, height: 425};
     var DIALOG_DIMENSIONS = {width: 200, height: 425};
 
@@ -54,10 +54,10 @@
 
         document.getElementById('hint').innerHTML = getHintText();
         if (preferences.templateDir) {
-            document.getElementById('template_dir').innerHTML = preferences.templateDirName;
+            document.getElementById('template_dir').innerHTML = preferences.templateDir.name;
         }
         if (preferences.outputDir) {
-            document.getElementById('output_dir').innerHTML = preferences.outputDirName;
+            document.getElementById('output_dir').innerHTML = preferences.outputDir.name;
         }
         var templates = document.getElementById('templates')
         while (templates.firstChild) templates.removeChild(templates.firstChild)
@@ -122,7 +122,7 @@
                 showMessage("Válassz egy sablon dokumentumot!")
                 var view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
                 if (preferences.templateDir) {
-                    view.setParent(preferences.templateDir)
+                    view.setParent(preferences.templateDir.id)
                 }
             }
             view.setIncludeFolders(true)
@@ -167,18 +167,25 @@
                 showMessage("Sablon eltávolítva.")
             }
         }
-        if (changed) savePreferences()
+        if (changed) {
+            savePreferences()
+            loadPreferences(preferences)
+        }
     }
 
     function selectItem(type, id, name) {
         switch (type) {
         case 'templateDir':
-            preferences.templateDir = id
-            preferences.templateDirName = name
+            preferences.templateDir = {
+              id : id,
+              name : name
+            }
             break;
         case 'outputDir':
-            preferences.outputDir = id
-            preferences.outputDirName = name
+            preferences.outputDir = {
+              id : id,
+              name : name
+            }
             break;
         default:
             for (var i = 0; i < preferences.maxTemplates; ++i) {
